@@ -935,6 +935,10 @@ const MainContent = ({ view, tasks, projects, contacts, onStatusChange, onTaskCl
     const [sortConfig, setSortConfig] = useState({ key: 'dueDate', direction: 'asc' });
     const [filterQuery, setFilterQuery] = useState('');
 
+    // --- DEBUGGING LOGS ---
+    console.log("--- MainContent received tasks ---");
+    console.table(tasks);
+
     switch (view) {
         case 'today':
             title = 'Today';
@@ -964,6 +968,10 @@ const MainContent = ({ view, tasks, projects, contacts, onStatusChange, onTaskCl
             title = 'Today';
             initialFilteredTasks = tasks.filter(t => t.structuredStatus !== 'Complete' && (t.dueDate === today || new Date(t.dueDate) < new Date(today)));
     }
+
+    // --- DEBUGGING LOGS ---
+    console.log(`--- Filtering for view: ${view} ---`);
+    console.log(`Found ${initialFilteredTasks.length} tasks after filtering.`);
 
     // Filtering Logic
     const filteredTasks = initialFilteredTasks.filter(task => 
