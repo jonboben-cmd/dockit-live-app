@@ -1165,12 +1165,6 @@ const useCollection = (collectionName) => {
         const q = query(collection(db, "users", userId, collectionName));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            // --- NEW DIAGNOSTIC ALERT ---
-            if (collectionName === 'tasks') {
-                alert(`Data received from Firestore: ${items.length} task(s).`);
-            }
-
             setData(items);
         });
         return () => unsubscribe();
@@ -1178,17 +1172,14 @@ const useCollection = (collectionName) => {
     return data;
 };
 
-    const tasksData = useCollection('tasks');
-    const projectsData = useCollection('projects');
-    const areasData = useCollection('areas');
-    const initiativesData = useCollection('initiatives');
-    const contactsData = useCollection('contacts');
+const tasks = useCollection('tasks');
+const projects = useCollection('projects');
+const areas = useCollection('areas');
+const initiatives = useCollection('initiatives');
+const contacts = useCollection('contacts');
 
-    useEffect(() => setTasks(tasksData), [tasksData]);
-    useEffect(() => setProjects(projectsData), [projectsData]);
-    useEffect(() => setAreas(areasData), [areasData]);
-    useEffect(() => setInitiatives(initiativesData), [initiativesData]);
-    useEffect(() => setContacts(contactsData), [contactsData]);
+const [currentView, setCurrentView] = useState('today');
+const [userId, setUserId] = useState(null);
 
 
     const handleOpenQuickAdd = useCallback(() => setIsQuickAddOpen(true), []);
