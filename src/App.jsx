@@ -32,12 +32,12 @@ const formatDate = (dateString) => {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     today.setHours(0, 0, 0, 0);
-    date.setHours(0, 0, 0, 0);
-    tomorrow.setHours(0, 0, 0, 0);
+    // Adjust for timezone differences by parsing the date string as-is
+    const inputDate = new Date(dateString + 'T00:00:00');
 
-    if (date.getTime() === today.getTime()) return 'Today';
-    if (date.getTime() === tomorrow.getTime()) return 'Tomorrow';
-    if (date.getTime() < today.getTime()) return 'Overdue';
+    if (inputDate.getTime() === today.getTime()) return 'Today';
+    if (inputDate.getTime() === tomorrow.getTime()) return 'Tomorrow';
+    if (inputDate.getTime() < today.getTime()) return 'Overdue';
 
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
@@ -289,7 +289,7 @@ const TaskItem = ({ task, allProjects, allContacts, onStatusChange, onTaskClick 
                 </div>
             </div>
             <div className="text-xs text-gray-500 group-hover:opacity-100 opacity-0 transition-opacity ml-2 mt-1 shrink-0">
-                {task.createdAt?.toDate().toLocaleDateString()}
+                {task.createdAt && task.createdAt.toDate ? task.createdAt.toDate().toLocaleDateString() : ''}
             </div>
         </div>
     );
@@ -931,18 +931,21 @@ const ManageProjectsModal = ({ isOpen, onClose, projects, onUpdateProjects }) =>
 const MainContent = ({ view, tasks, projects, contacts, onStatusChange, onTaskClick, areas, initiatives }) => {
     let title = "Dashboard";
     let initialFilteredTasks = tasks;
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const [sortConfig, setSortConfig] = useState({ key: 'dueDate', direction: 'asc' });
     const [filterQuery, setFilterQuery] = useState('');
-
-    // --- DEBUGGING LOGS ---
-    console.log("--- MainContent received tasks ---");
-    console.table(tasks);
 
     switch (view) {
         case 'today':
             title = 'Today';
-            initialFilteredTasks = tasks.filter(t => t.structuredStatus !== 'Complete' && (t.dueDate === today || new Date(t.dueDate) < new Date(today)));
+            initialFilteredTasks = tasks.filter(t => {
+                if (t.structuredStatus === 'Complete') return false;
+                if (!t.dueDate) return false;
+                const taskDate = new Date(t.dueDate + 'T00:00:00');
+                return taskDate <= today;
+            });
             break;
         case 'inbox':
             title = 'Processing Inbox';
@@ -954,11 +957,11 @@ const MainContent = ({ view, tasks, projects, contacts, onStatusChange, onTaskCl
              break;
         case 'projects':
             title = 'All Projects';
-            initialFilteredTasks = tasks.filter(t => t.parentType === 'project');
+            initialFilteredTasks = tasks;
             break;
         case 'areas':
             title = 'All Areas';
-            initialFilteredTasks = tasks.filter(t => t.parentType === 'area' || t.parentType === 'initiative');
+            initialFilteredTasks = tasks;
             break;
         case 'archives':
              title = 'Archives';
@@ -966,14 +969,9 @@ const MainContent = ({ view, tasks, projects, contacts, onStatusChange, onTaskCl
              break;
         default:
             title = 'Today';
-            initialFilteredTasks = tasks.filter(t => t.structuredStatus !== 'Complete' && (t.dueDate === today || new Date(t.dueDate) < new Date(today)));
+            initialFilteredTasks = tasks.filter(t => t.structuredStatus !== 'Complete' && t.dueDate);
     }
 
-    // --- DEBUGGING LOGS ---
-    console.log(`--- Filtering for view: ${view} ---`);
-    console.log(`Found ${initialFilteredTasks.length} tasks after filtering.`);
-
-    // Filtering Logic
     const filteredTasks = initialFilteredTasks.filter(task => 
         task.title.toLowerCase().includes(filterQuery.toLowerCase())
     );
@@ -1028,6 +1026,7 @@ const MainContent = ({ view, tasks, projects, contacts, onStatusChange, onTaskCl
 
     // Grouping logic for specific views
     const groupedByProject = view === 'projects' ? sortedTasks.reduce((acc, task) => {
+        if(task.parentType !== 'project') return acc;
         const project = projects.find(p => p.id === task.parentId);
         const key = project ? `${project.client} - ${project.name}` : 'Unassigned';
         if (!acc[key]) acc[key] = [];
@@ -1036,6 +1035,7 @@ const MainContent = ({ view, tasks, projects, contacts, onStatusChange, onTaskCl
     }, {}) : null;
 
     const groupedByArea = view === 'areas' ? sortedTasks.reduce((acc, task) => {
+        if(task.parentType !== 'area' && task.parentType !== 'initiative') return acc;
         const key = task.parentType === 'area' ? areas.find(a=>a.id === task.parentId)?.name : initiatives.find(i=>i.id === task.parentId)?.name;
         if (!key) return acc;
         if (!acc[key]) acc[key] = [];
@@ -1044,8 +1044,9 @@ const MainContent = ({ view, tasks, projects, contacts, onStatusChange, onTaskCl
     }, {}) : null;
     
     // Split tasks for 'Today' view
-    const overdueTasks = view === 'today' ? sortedTasks.filter(t => new Date(t.dueDate) < new Date(today) && t.structuredStatus !== 'Complete') : [];
-    const todayTasks = view === 'today' ? sortedTasks.filter(t => t.dueDate === today && t.structuredStatus !== 'Complete') : [];
+    const todayString = new Date().toISOString().split('T')[0];
+    const overdueTasks = view === 'today' ? sortedTasks.filter(t => t.dueDate < todayString) : [];
+    const todayTasks = view === 'today' ? sortedTasks.filter(t => t.dueDate === todayString) : [];
     
     const renderTaskItem = (task) => (
         <TaskItem key={task.id} task={task} allProjects={projects} allContacts={contacts} onStatusChange={onStatusChange} onTaskClick={onTaskClick} />
