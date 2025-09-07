@@ -1119,68 +1119,42 @@ const MainContent = ({ view, tasks, projects, contacts, onStatusChange, onTaskCl
     );
 };
 
-const DockitApp = () => {
-    const [tasks, setTasks] = useState([]);
-    const [projects, setProjects] = useState([]);
-    const [areas, setAreas] = useState([]);
-    const [initiatives, setInitiatives] = useState([]);
-    const [contacts, setContacts] = useState([]);
-    const [currentView, setCurrentView] = useState('today');
-    const [userId, setUserId] = useState(null);
+const DockitApp = ({ userId }) => {
+    const useCollection = (collectionName) => {
+        const [data, setData] = useState([]);
+        useEffect(() => {
+            if (!userId) {
+                setData([]);
+                return;
+            };
+            const q = query(collection(db, "users", userId, collectionName));
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setData(items);
+            });
+            return () => unsubscribe();
+        }, [userId, collectionName]);
+        return data;
+    };
+
+    const tasks = useCollection('tasks');
+    const projects = useCollection('projects');
+    const areas = useCollection('areas');
+    const initiatives = useCollection('initiatives');
+    const contacts = useCollection('contacts');
     
-    // Modal states
+    const [currentView, setCurrentView] = useState('today');
     const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
-    
-    // State for modals with context
     const [taskToDelegate, setTaskToDelegate] = useState(null);
     const [taskAwaitingReview, setTaskAwaitingReview] = useState(null);
     const [taskToEdit, setTaskToEdit] = useState(null);
     const [isMac, setIsMac] = useState(false);
     
-    // --- Set the current user from auth state ---
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, user => {
-            if (user) {
-                setUserId(user.uid);
-            } else {
-                setUserId(null);
-            }
-        });
-        return () => unsubscribe();
-    }, []);
-
-
-const useCollection = (collectionName) => {
-    const [data, setData] = useState([]);
-    useEffect(() => {
-        if (!userId) {
-            setData([]);
-            return;
-        };
-        const q = query(collection(db, "users", userId, collectionName));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setData(items);
-        });
-        return () => unsubscribe();
-    }, [userId, collectionName]);
-    return data;
-};
-
-const tasks = useCollection('tasks');
-const projects = useCollection('projects');
-const areas = useCollection('areas');
-const initiatives = useCollection('initiatives');
-const contacts = useCollection('contacts');
-
-const [currentView, setCurrentView] = useState('today');
-const [userId, setUserId] = useState(null);
-
 
     const handleOpenQuickAdd = useCallback(() => setIsQuickAddOpen(true), []);
 
@@ -1197,20 +1171,19 @@ const [userId, setUserId] = useState(null);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [handleOpenQuickAdd]);
 
-const handleAddTask = async (newTaskData) => {
-    if(!userId) return;
-    try {
-        await addDoc(collection(db, "users", userId, 'tasks'), {
-            ...newTaskData,
-            createdAt: serverTimestamp(),
-        });
-    } catch(e) { console.error("Error adding task: ", e); }
-};
+    const handleAddTask = async (newTaskData) => {
+        if(!userId) return;
+        try {
+            await addDoc(collection(db, "users", userId, 'tasks'), {
+                ...newTaskData,
+                createdAt: serverTimestamp(),
+            });
+        } catch(e) { console.error("Error adding task: ", e); }
+    };
     
     const handleUpdateTask = async (taskId, updatedData) => {
         if(!userId) return;
         const taskRef = doc(db, "users", userId, "tasks", taskId);
-        // Remove id and parentLink before sending to Firestore
         const { id, parentLink, ...dataToUpdate } = updatedData;
         try {
             await updateDoc(taskRef, dataToUpdate);
@@ -1263,16 +1236,14 @@ const handleAddTask = async (newTaskData) => {
         if (!userId) return;
         const batch = writeBatch(db);
         
-        // Delete items that are not in the new list
         currentItems.forEach(item => {
             if (!newItems.find(newItem => newItem.id === item.id)) {
                 batch.delete(doc(db, "users", userId, collectionName, item.id));
             }
         });
 
-        // Add or update items
         newItems.forEach(item => {
-            if (item.id.startsWith('temp_')) { // New items
+            if (item.id.startsWith('temp_')) {
                 const { id, ...itemData } = item;
                 batch.set(doc(collection(db, "users", userId, collectionName)), itemData);
             }
@@ -1376,7 +1347,6 @@ const handleAddTask = async (newTaskData) => {
                 />
             </div>
 
-            {/* Floating Action Button for Quick Add */}
             <button
                 onClick={handleOpenQuickAdd}
                 className="fixed bottom-8 right-8 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full p-4 shadow-lg transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-indigo-500 z-20"
@@ -1402,9 +1372,7 @@ const LoginScreen = ({ onLogin }) => {
         setError('');
         setIsLoading(true);
         signInWithEmailAndPassword(auth, email, password)
-            .then((userCredential) => {
-                // onLogin is not a prop, login state is handled by onAuthStateChanged
-            })
+            .then((userCredential) => {})
             .catch((error) => {
                 setError("Failed to sign in. Please check your email and password.");
                 console.error("Login Error:", error);
@@ -1473,6 +1441,6 @@ export default function App() {
         );
     }
 
-    return user ? <DockitApp /> : <LoginScreen />;
+    return user ? <DockitApp userId={user.uid} /> : <LoginScreen />;
 }
 
