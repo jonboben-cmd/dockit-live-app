@@ -1,0 +1,10 @@
+# This file configures the build settings for Netlify.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # This line tells Netlify's secrets scanner to ignore these specific keys.
+  # They are necessary for the Firebase client-side SDK to function and are
+  # designed to be public. Your data remains secure due to Firestore Rules.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_API_KEY,VITE_APP_ID,VITE_AUTH_DOMAIN,VITE_MESSAGING_SENDER_ID,VITE_PROJECT_ID,VITE_STORAGE_BUCKET"
