@@ -1201,14 +1201,26 @@ const DockitApp = () => {
     }, [handleOpenQuickAdd]);
 
     const handleAddTask = async (newTaskData) => {
-        if(!userId) return;
-        try {
-            await addDoc(collection(db, "users", userId, 'tasks'), {
-                ...newTaskData,
-                createdAt: serverTimestamp(),
-            });
-        } catch(e) { console.error("Error adding task: ", e); }
-    };
+    if (!userId) {
+        alert("Error: No User ID found. Cannot add task.");
+        return;
+    }
+
+    alert("Attempting to add task. Click OK to continue.");
+
+    try {
+        await addDoc(collection(db, "users", userId, 'tasks'), {
+            ...newTaskData,
+            createdAt: serverTimestamp(),
+        });
+
+        alert("Success! The 'addDoc' command completed without an error.");
+
+    } catch (e) {
+        alert("An error was caught! Message: " + e.message);
+        console.error("Error adding task: ", e);
+    }
+};
     
     const handleUpdateTask = async (taskId, updatedData) => {
         if(!userId) return;
