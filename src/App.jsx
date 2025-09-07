@@ -7,14 +7,15 @@ import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 
 
-// --- FIREBASE CONFIGURATION ---
+// --- SECURE FIREBASE CONFIGURATION ---
+// Reads keys from Netlify's secure environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyB9wrs0AuywcsVdI5qtxlgHq50ClG2bcwg",
-  authDomain: "dockit-app-7067e.firebaseapp.com",
-  projectId: "dockit-app-7067e",
-  storageBucket: "dockit-app-7067e.appspot.com",
-  messagingSenderId: "858967291692",
-  appId: "1:858967291692:web:ce337c6ea7e83598d45e89"
+  apiKey: import.meta.env.VITE_API_KEY,
+  authDomain: import.meta.env.VITE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_APP_ID
 };
 
 // Initialize Firebase
@@ -26,12 +27,13 @@ const auth = getAuth(app);
 // --- UTILITY FUNCTIONS ---
 const formatDate = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     today.setHours(0, 0, 0, 0);
+    tomorrow.setHours(0, 0, 0, 0);
+
     // Adjust for timezone differences by parsing the date string as-is
     const inputDate = new Date(dateString + 'T00:00:00');
 
@@ -39,7 +41,7 @@ const formatDate = (dateString) => {
     if (inputDate.getTime() === tomorrow.getTime()) return 'Tomorrow';
     if (inputDate.getTime() < today.getTime()) return 'Overdue';
 
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return inputDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
 const getImportanceClass = (importance) => {
@@ -296,79 +298,54 @@ const TaskItem = ({ task, allProjects, allContacts, onStatusChange, onTaskClick 
 };
 
 const QuickAddModal = ({ isOpen, onClose, onAddTask, projects, areas, initiatives }) => {
-    const [mode, setMode] = useState('quick'); // 'quick' or 'detailed'
-    
-    // State for quick mode
+    const [mode, setMode] = useState('quick');
     const [inputValue, setInputValue] = useState('');
     const quickInputRef = useRef(null);
-
-    // State for detailed mode
     const [title, setTitle] = useState('');
-    const [link, setLink] = useState('area_area4'); // Default to Personal area
+    const [link, setLink] = useState('');
     const [dueDate, setDueDate] = useState('');
     const [importance, setImportance] = useState('Medium');
     const detailedInputRef = useRef(null);
 
+    const getPersonalAreaId = useCallback(() => {
+        const personalArea = areas.find(a => a.name === "Personal");
+        return personalArea ? `area_${personalArea.id}` : (areas.length > 0 ? `area_${areas[0].id}` : '');
+    }, [areas]);
+
     useEffect(() => {
         if (isOpen) {
-            // Reset state on open
-            const defaultArea = areas.find(a => a.name === "Personal") || areas[0];
-            const defaultLink = defaultArea ? `area_${defaultArea.id}` : '';
+            const defaultLink = getPersonalAreaId();
             setMode('quick');
             setInputValue('');
             setTitle('');
             setLink(defaultLink);
             setDueDate('');
             setImportance('Medium');
-            setTimeout(() => {
-                if (mode === 'quick') {
-                    quickInputRef.current?.focus();
-                } else {
-                    detailedInputRef.current?.focus();
-                }
-            }, 100);
+            setTimeout(() => (mode === 'quick' ? quickInputRef.current?.focus() : detailedInputRef.current?.focus()), 100);
         }
-    }, [isOpen, areas]);
+    }, [isOpen, mode, getPersonalAreaId]);
 
-    useEffect(() => {
-        if (isOpen) {
-            if (mode === 'quick') {
-                quickInputRef.current?.focus();
-            } else {
-                detailedInputRef.current?.focus();
-            }
-        }
-    }, [isOpen, mode]);
-
-
-    const handleClose = () => {
-        onClose();
-    };
-    
-    const handleQuickAddKeyDown = (e) => {
-        if (e.key === 'Escape') {
-            handleClose();
-        }
-        if (e.key === 'Enter' && inputValue.trim()) {
-            parseAndAddTask();
-        }
-    };
+    const handleClose = () => onClose();
 
     const parseAndAddTask = () => {
         let text = inputValue;
-        const defaultArea = areas.find(a => a.name === "Personal") || areas[0] || {id: null};
-        
+        const personalAreaId = (getPersonalAreaId() || '').split('_')[1];
+
+        if (!personalAreaId) {
+            console.error("No default area available to create a task.");
+            return;
+        }
+
         const projectMatch = text.match(/#(\d{6}\.\d{4})/);
         const dueDateMatch = text.match(/due (today|tomorrow)/i);
         const importanceMatch = text.match(/p(\d)/i);
 
         let newTask = {
-            parentType: 'area', // Default
-            parentId: defaultArea.id,
+            parentType: 'area',
+            parentId: personalAreaId,
             structuredStatus: 'Not Started',
             delegatedToIds: [],
             awaitingReviewFrom: null,
-            associatedContacts: [],
             importance: 'Medium',
         };
 
@@ -383,9 +360,7 @@ const QuickAddModal = ({ isOpen, onClose, onAddTask, projects, areas, initiative
 
         if (dueDateMatch) {
             const today = new Date();
-            if (dueDateMatch[1].toLowerCase() === 'tomorrow') {
-                today.setDate(today.getDate() + 1);
-            }
+            if (dueDateMatch[1].toLowerCase() === 'tomorrow') today.setDate(today.getDate() + 1);
             newTask.dueDate = today.toISOString().split('T')[0];
             text = text.replace(dueDateMatch[0], '').trim();
         }
@@ -393,8 +368,7 @@ const QuickAddModal = ({ isOpen, onClose, onAddTask, projects, areas, initiative
         if (importanceMatch) {
             const level = parseInt(importanceMatch[1], 10);
             if (level === 1) newTask.importance = 'High';
-            else if (level === 2) newTask.importance = 'Medium';
-            else if (level === 3) newTask.importance = 'Low';
+            if (level === 3) newTask.importance = 'Low';
             text = text.replace(importanceMatch[0], '').trim();
         }
         
@@ -404,14 +378,14 @@ const QuickAddModal = ({ isOpen, onClose, onAddTask, projects, areas, initiative
     };
 
     const handleDetailedAddTask = () => {
-        if (!title.trim()) {
-            detailedInputRef.current?.focus();
+        if (!title.trim() || !link) {
+            console.error("Title or link is missing.");
             return;
         }
 
         const [parentType, parentId] = link.split('_');
 
-        const newTask = {
+        onAddTask({
             title: title.trim(),
             parentType,
             parentId,
@@ -420,114 +394,65 @@ const QuickAddModal = ({ isOpen, onClose, onAddTask, projects, areas, initiative
             structuredStatus: 'Not Started',
             delegatedToIds: [],
             awaitingReviewFrom: null,
-            associatedContacts: [],
-        };
-
-        onAddTask(newTask);
+        });
         handleClose();
     };
-    
-    const handleDetailedKeyDown = (e) => {
-        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-            handleDetailedAddTask();
-        }
-         if (e.key === 'Escape') {
-            handleClose();
-        }
-    }
 
+    const handleKeyDown = (e, handler) => {
+        if (e.key === 'Escape') handleClose();
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || !e.metaKey && !e.ctrlKey)) {
+             if(mode === 'quick' && inputValue.trim()) parseAndAddTask();
+             if(mode === 'detailed') handleDetailedAddTask();
+        }
+    };
+    
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-16 md:pt-24 z-50" onClick={handleClose}>
-            <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl mx-4" onClick={e => e.stopPropagation()} onKeyDown={mode === 'detailed' ? handleDetailedKeyDown : undefined}>
+            <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl mx-4" onClick={e => e.stopPropagation()} onKeyDown={(e) => handleKeyDown(e)}>
                 <div className="p-2 flex items-center justify-between border-b border-gray-700/50">
                     <div className="flex items-center space-x-1">
-                        <button onClick={() => setMode('quick')} className={`px-3 py-1 text-sm rounded-md transition-colors ${mode === 'quick' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50'}`}>
-                            Quick Add
-                        </button>
-                        <button onClick={() => setMode('detailed')} className={`px-3 py-1 text-sm rounded-md transition-colors ${mode === 'detailed' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50'}`}>
-                            Add Details
-                        </button>
+                        <button onClick={() => setMode('quick')} className={`px-3 py-1 text-sm rounded-md transition-colors ${mode === 'quick' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50'}`}>Quick Add</button>
+                        <button onClick={() => setMode('detailed')} className={`px-3 py-1 text-sm rounded-md transition-colors ${mode === 'detailed' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50'}`}>Add Details</button>
                     </div>
-                    <button onClick={handleClose} className="p-1 rounded-md hover:bg-gray-700">
-                        <X className="w-5 h-5 text-gray-400" />
-                    </button>
+                    <button onClick={handleClose} className="p-1 rounded-md hover:bg-gray-700"><X className="w-5 h-5 text-gray-400" /></button>
                 </div>
 
                 {mode === 'quick' ? (
                     <div>
                         <div className="p-4 flex items-center space-x-3">
                             <Search className="w-5 h-5 text-gray-400" />
-                            <input
-                                ref={quickInputRef}
-                                type="text"
-                                value={inputValue}
-                                onChange={(e) => setInputValue(e.target.value)}
-                                onKeyDown={handleQuickAddKeyDown}
-                                placeholder="Draft response for Acme merger docs #123456.1234 due tomorrow p1"
-                                className="w-full bg-transparent text-lg text-gray-100 placeholder-gray-500 focus:outline-none"
-                            />
+                            <input ref={quickInputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Draft response for Acme merger..." className="w-full bg-transparent text-lg text-gray-100 placeholder-gray-500 focus:outline-none" />
                         </div>
                         <div className="border-t border-gray-700 px-4 py-2 text-xs text-gray-500">
-                            Use <kbd className="font-sans border border-gray-600 bg-gray-900 rounded-md px-1.5 py-0.5">#C/M</kbd> for Project, <kbd className="font-sans border border-gray-600 bg-gray-900 rounded-md px-1.5 py-0.5">due ...</kbd> for Date, <kbd className="font-sans border border-gray-600 bg-gray-900 rounded-md px-1.5 py-0.5">p1-3</kbd> for Importance.
+                            Use <kbd className="font-sans border border-gray-600 bg-gray-900 rounded-md px-1.5 py-0.5">#C/M</kbd>, <kbd className="font-sans border border-gray-600 bg-gray-900 rounded-md px-1.5 py-0.5">due ...</kbd>, <kbd className="font-sans border border-gray-600 bg-gray-900 rounded-md px-1.5 py-0.5">p1-3</kbd>.
                         </div>
                     </div>
                 ) : (
                     <div className="p-4 space-y-4">
-                        <div className="flex items-center space-x-3">
-                            <FileText className="w-5 h-5 text-gray-400" />
-                            <input
-                                ref={detailedInputRef}
-                                type="text"
-                                value={title}
-                                onChange={(e) => setTitle(e.target.value)}
-                                placeholder="Task Title"
-                                className="w-full bg-gray-900/50 text-lg text-gray-100 placeholder-gray-500 focus:outline-none p-2 rounded-md border border-gray-700 focus:ring-2 focus:ring-indigo-500"
-                            />
-                        </div>
-
+                        <input ref={detailedInputRef} type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task Title" className="w-full bg-gray-900/50 text-lg text-gray-100 placeholder-gray-500 focus:outline-none p-2 rounded-md border border-gray-700 focus:ring-2 focus:ring-indigo-500" />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                              <div className="flex items-center space-x-3">
                                 <Link2 className="w-5 h-5 text-gray-400" />
                                 <select value={link} onChange={e => setLink(e.target.value)} className="w-full bg-gray-900/50 p-2 rounded-md border border-gray-700 text-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                                    <optgroup label="General">
-                                        <option value={`area_${(areas.find(a => a.name === 'Personal') || {id: ''}).id}`}>Internal / Unassigned</option>
-                                    </optgroup>
-                                    <optgroup label="Projects">
-                                        {projects.map(p => <option key={p.id} value={`project_${p.id}`}>{p.name} (#{p.cm_number})</option>)}
-                                    </optgroup>
-                                    <optgroup label="Client Development Initiatives">
-                                        {initiatives.map(i => <option key={i.id} value={`initiative_${i.id}`}>{i.name}</option>)}
-                                    </optgroup>
-                                    <optgroup label="Areas">
-                                        {areas.filter(a => a.name !== 'Client Development').map(a => <option key={a.id} value={`area_${a.id}`}>{a.name}</option>)}
-                                    </optgroup>
+                                    <optgroup label="General"><option value={getPersonalAreaId()}>Internal / Unassigned</option></optgroup>
+                                    <optgroup label="Projects">{projects.map(p => <option key={p.id} value={`project_${p.id}`}>{p.name} (#{p.cm_number})</option>)}</optgroup>
+                                    <optgroup label="Client Development Initiatives">{initiatives.map(i => <option key={i.id} value={`initiative_${i.id}`}>{i.name}</option>)}</optgroup>
+                                    <optgroup label="Areas">{areas.filter(a => a.name !== 'Client Development').map(a => <option key={a.id} value={`area_${a.id}`}>{a.name}</option>)}</optgroup>
                                 </select>
                             </div>
-                             <div className="flex items-center space-x-3">
-                                <Calendar className="w-5 h-5 text-gray-400" />
-                                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="w-full bg-gray-900/50 p-2 rounded-md border border-gray-700 text-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                            </div>
+                             <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="w-full bg-gray-900/50 p-2 rounded-md border border-gray-700 text-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                         </div>
-
                         <div className="flex items-center space-x-3">
                             <Flag className="w-5 h-5 text-gray-400" />
                             <div className="flex space-x-2">
-                                {['High', 'Medium', 'Low'].map(level => (
-                                    <button key={level} onClick={() => setImportance(level)} className={`px-3 py-1 text-sm rounded-full border transition-colors ${importance === level ? getImportanceClass(level) + ' font-semibold' : 'text-gray-400 border-gray-700 hover:bg-gray-700/50'}`}>
-                                        {level}
-                                    </button>
-                                ))}
+                                {['High', 'Medium', 'Low'].map(level => <button key={level} onClick={() => setImportance(level)} className={`px-3 py-1 text-sm rounded-full border transition-colors ${importance === level ? getImportanceClass(level) + ' font-semibold' : 'text-gray-400 border-gray-700 hover:bg-gray-700/50'}`}>{level}</button>)}
                             </div>
                         </div>
-
                         <div className="flex justify-end items-center border-t border-gray-700 pt-4">
-                            <span className="text-xs text-gray-500 mr-4">Press <kbd className="font-sans border border-gray-600 bg-gray-900 rounded-md px-1.5 py-0.5">⌘</kbd> + <kbd className="font-sans border border-gray-600 bg-gray-900 rounded-md px-1.5 py-0.5">Enter</kbd> to save</span>
-                            <button onClick={handleDetailedAddTask} className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-md flex items-center space-x-2 transition-colors">
-                                <Plus className="w-4 h-4"/>
-                                <span>Add Task</span>
-                            </button>
+                            <span className="text-xs text-gray-500 mr-4">Press <kbd className="font-sans border border-gray-600 bg-gray-900 rounded-md px-1.5 py-0.5">Enter</kbd> to save</span>
+                            <button onClick={handleDetailedAddTask} className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-md flex items-center space-x-2 transition-colors"><Plus className="w-4 h-4"/><span>Add Task</span></button>
                         </div>
                     </div>
                 )}
@@ -535,6 +460,10 @@ const QuickAddModal = ({ isOpen, onClose, onAddTask, projects, areas, initiative
         </div>
     );
 };
+
+// ... (Rest of the modals: ContactSelectorModal, EditTaskModal, etc. are unchanged)
+// ... The code for these modals is identical to the previous version.
+// ... For brevity, they are not repeated here. The full file must include them.
 
 const ContactSelectorModal = ({ title, task, contacts, onConfirm, onCancel, onAddContact, multiSelect = false }) => {
     const [selectedIds, setSelectedIds] = useState([]);
@@ -969,7 +898,12 @@ const MainContent = ({ view, tasks, projects, contacts, onStatusChange, onTaskCl
              break;
         default:
             title = 'Today';
-            initialFilteredTasks = tasks.filter(t => t.structuredStatus !== 'Complete' && t.dueDate);
+            initialFilteredTasks = tasks.filter(t => {
+                 if (t.structuredStatus === 'Complete') return false;
+                if (!t.dueDate) return false;
+                const taskDate = new Date(t.dueDate + 'T00:00:00');
+                return taskDate <= today;
+            });
     }
 
     const filteredTasks = initialFilteredTasks.filter(task => 
