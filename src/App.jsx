@@ -1155,22 +1155,28 @@ const DockitApp = () => {
     }, []);
 
 
-    const useCollection = (collectionName) => {
-        const [data, setData] = useState([]);
-        useEffect(() => {
-            if (!userId) {
-                setData([]);
-                return;
-            };
-            const q = query(collection(db, "users", userId, collectionName));
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setData(items);
-            });
-            return () => unsubscribe();
-        }, [userId, collectionName]);
-        return data;
-    };
+const useCollection = (collectionName) => {
+    const [data, setData] = useState([]);
+    useEffect(() => {
+        if (!userId) {
+            setData([]);
+            return;
+        };
+        const q = query(collection(db, "users", userId, collectionName));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // --- NEW DIAGNOSTIC ALERT ---
+            if (collectionName === 'tasks') {
+                alert(`Data received from Firestore: ${items.length} task(s).`);
+            }
+
+            setData(items);
+        });
+        return () => unsubscribe();
+    }, [userId, collectionName]);
+    return data;
+};
 
     const tasksData = useCollection('tasks');
     const projectsData = useCollection('projects');
@@ -1200,26 +1206,14 @@ const DockitApp = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [handleOpenQuickAdd]);
 
-    const handleAddTask = async (newTaskData) => {
-    if (!userId) {
-        alert("Error: No User ID found. Cannot add task.");
-        return;
-    }
-
-    alert("Attempting to add task. Click OK to continue.");
-
+const handleAddTask = async (newTaskData) => {
+    if(!userId) return;
     try {
         await addDoc(collection(db, "users", userId, 'tasks'), {
             ...newTaskData,
             createdAt: serverTimestamp(),
         });
-
-        alert("Success! The 'addDoc' command completed without an error.");
-
-    } catch (e) {
-        alert("An error was caught! Message: " + e.message);
-        console.error("Error adding task: ", e);
-    }
+    } catch(e) { console.error("Error adding task: ", e); }
 };
     
     const handleUpdateTask = async (taskId, updatedData) => {
