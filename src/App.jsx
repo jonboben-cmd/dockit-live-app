@@ -3,7 +3,7 @@ import { Plus, Command, Inbox, Briefcase, Folder, Archive, Star, Calendar, Flag,
 
 // --- Firebase SDK Imports ---
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, writeBatch } from "firestore";
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, writeBatch } from "firebase/firestore";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 
 
